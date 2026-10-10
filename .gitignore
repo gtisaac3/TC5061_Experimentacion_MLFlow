@@ -1,0 +1,26 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# VS Code
+.vscode/
+
+# MLflow local
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Modelos y artefactos generados
+*.joblib
+baseline_evaluation.png
+mlflow_evidence.png
+
+# Datasets
+train.csv
+stores.csv
+oil.csv
+test.csv
+transactions.csv
+holidays_events.csv
+sample_submission.csv
