@@ -1,3 +1,5 @@
+import argparse
+import random
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +18,6 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # Configuración base
 DATA_DIR = Path(".")
-TEST_START_DATE = "2017-08-01"
 
 NUMERIC_FEATURES = [
   "onpromotion",
@@ -37,6 +38,84 @@ CATEGORICAL_FEATURES = [
 ]
 
 TARGET = "sales"
+
+
+def parse_args():
+  """
+  Define y obtiene los argumentos de línea de comandos.
+  """
+  parser = argparse.ArgumentParser(
+    description=(
+      "Entrena y evalúa un modelo Ridge para predecir "
+      "las ventas del dataset Store Sales."
+    )
+  )
+
+  parser.add_argument(
+    "--alpha",
+    type=float,
+    default=1.0,
+    help=(
+      "Fuerza de regularización del modelo Ridge. "
+      "Default: 1.0"
+    ),
+  )
+
+  parser.add_argument(
+    "--solver",
+    type=str,
+    default="lsqr",
+    choices=[
+      "lsqr",
+      "sparse_cg",
+      "sag",
+      "saga",
+    ],
+    help=(
+      "Algoritmo de optimización utilizado por Ridge. "
+      "Default: lsqr"
+    ),
+  )
+
+  parser.add_argument(
+    "--tol",
+    type=float,
+    default=1e-4,
+    help=(
+      "Tolerancia utilizada como criterio de convergencia. "
+      "Default: 0.0001"
+    ),
+  )
+
+  parser.add_argument(
+    "--random-state",
+    type=int,
+    default=42,
+    help=(
+      "Semilla aleatoria utilizada para reproducibilidad. "
+      "Default: 42"
+    ),
+  )
+
+  parser.add_argument(
+    "--test-start-date",
+    type=str,
+    default="2017-08-01",
+    help=(
+      "Fecha inicial del conjunto de prueba en formato YYYY-MM-DD. "
+      "Default: 2017-08-01"
+    ),
+  )
+
+  return parser.parse_args()
+
+
+def set_seed(random_state):
+  """
+  Fija las semillas utilizadas durante la ejecución.
+  """
+  random.seed(random_state)
+  np.random.seed(random_state)
 
 
 def load_data(data_dir):
@@ -138,7 +217,7 @@ def split_data(df, test_start_date):
   return X_train, X_test, y_train, y_test
 
 
-def build_model():
+def build_model(alpha, solver, tol, random_state):
   """
   Construye el pipeline de preprocesamiento y el modelo Ridge.
   """
@@ -180,8 +259,10 @@ def build_model():
       (
         "model",
         Ridge(
-          alpha=1.0,
-          solver="lsqr",
+          alpha=alpha,
+          solver=solver,
+          tol=tol,
+          random_state=random_state,
         ),
       ),
     ]
@@ -242,7 +323,9 @@ def evaluate_model(model, X_test, y_test):
   return metrics
 
 
-def main():
+def main(args):
+  set_seed(args.random_state)
+
   print("Cargando datos...")
 
   train, stores, oil = load_data(
@@ -263,7 +346,7 @@ def main():
 
   X_train, X_test, y_train, y_test = split_data(
     df,
-    TEST_START_DATE,
+    args.test_start_date,
   )
 
   print(
@@ -273,9 +356,23 @@ def main():
     f"Registros de prueba: {len(X_test):,}"
   )
 
+  print("\nConfiguración")
+  print("-------------")
+  print(f"Alpha: {args.alpha}")
+  print(f"Solver: {args.solver}")
+  print(f"Tolerance: {args.tol}")
+  print(f"Random state: {args.random_state}")
+  print(f"Test start date: {args.test_start_date}")
+  print()
+
   print("Construyendo modelo...")
 
-  model = build_model()
+  model = build_model(
+    alpha=args.alpha,
+    solver=args.solver,
+    tol=args.tol,
+    random_state=args.random_state,
+  )
 
   print("Entrenando modelo...")
 
@@ -309,4 +406,5 @@ def main():
 
 
 if __name__ == "__main__":
-  main()
+  args = parse_args()
+  main(args)
