@@ -1,7 +1,11 @@
 import argparse
+import json
 import random
+import tempfile
 from pathlib import Path
 
+import mlflow
+import mlflow.sklearn
 import numpy as np
 import pandas as pd
 
@@ -18,6 +22,9 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # Configuración base
 DATA_DIR = Path(".")
+
+MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+MLFLOW_EXPERIMENT_NAME = "store_sales_ridge_experiments"
 
 NUMERIC_FEATURES = [
   "onpromotion",
@@ -312,19 +319,47 @@ def evaluate_model(model, X_test, y_test):
   ) * 100
 
   metrics = {
-    "mae": mae,
-    "rmse": rmse,
-    "r2": r2,
-    "negative_predictions": negative_predictions,
-    "negative_predictions_percentage":
-      negative_predictions_percentage,
+    "mae": float(mae),
+    "rmse": float(rmse),
+    "r2": float(r2),
+    "negative_predictions": int(negative_predictions),
+    "negative_predictions_percentage": float(
+      negative_predictions_percentage
+    ),
   }
 
   return metrics
 
+def log_metrics_artifact(metrics):
+  """
+  Guarda las métricas en un archivo JSON y lo registra
+  como artefacto de MLflow.
+  """
+  with tempfile.TemporaryDirectory() as temp_dir:
+    metrics_path = Path(temp_dir) / "metrics.json"
+
+    with metrics_path.open("w", encoding="utf-8") as file:
+      json.dump(
+        metrics,
+        file,
+        indent=2,
+      )
+
+    mlflow.log_artifact(
+      str(metrics_path),
+      artifact_path="evaluation",
+    )
 
 def main(args):
   set_seed(args.random_state)
+
+  mlflow.set_tracking_uri(
+    MLFLOW_TRACKING_URI
+  )
+
+  mlflow.set_experiment(
+    MLFLOW_EXPERIMENT_NAME
+  )
 
   print("Cargando datos...")
 
@@ -365,45 +400,95 @@ def main(args):
   print(f"Test start date: {args.test_start_date}")
   print()
 
-  print("Construyendo modelo...")
-
-  model = build_model(
-    alpha=args.alpha,
-    solver=args.solver,
-    tol=args.tol,
-    random_state=args.random_state,
+  run_name = (
+    f"ridge_"
+    f"alpha-{args.alpha}_"
+    f"solver-{args.solver}_"
+    f"tol-{args.tol}_"
+    f"seed-{args.random_state}"
   )
 
-  print("Entrenando modelo...")
+  with mlflow.start_run(
+    run_name=run_name
+  ) as run:
+    mlflow.log_params(
+      {
+        "model": "Ridge",
+        "alpha": args.alpha,
+        "solver": args.solver,
+        "tol": args.tol,
+        "random_state": args.random_state,
+        "test_start_date": args.test_start_date,
+        "train_rows": len(X_train),
+        "test_rows": len(X_test),
+      }
+    )
 
-  model = train_model(
-    model,
-    X_train,
-    y_train,
-  )
+    print("Construyendo modelo...")
 
-  print("Evaluando modelo...")
+    model = build_model(
+      alpha=args.alpha,
+      solver=args.solver,
+      tol=args.tol,
+      random_state=args.random_state,
+    )
 
-  metrics = evaluate_model(
-    model,
-    X_test,
-    y_test,
-  )
+    print("Entrenando modelo...")
 
-  print("\nResultados")
-  print("----------")
-  print(f"MAE:  {metrics['mae']:,.2f}")
-  print(f"RMSE: {metrics['rmse']:,.2f}")
-  print(f"R²:   {metrics['r2']:.4f}")
-  print(
-    "Predicciones negativas: "
-    f"{metrics['negative_predictions']:,}"
-  )
-  print(
-    "Porcentaje de predicciones negativas: "
-    f"{metrics['negative_predictions_percentage']:.2f}%"
-  )
+    model = train_model(
+      model,
+      X_train,
+      y_train,
+    )
 
+    print("Evaluando modelo...")
+
+    metrics = evaluate_model(
+      model,
+      X_test,
+      y_test,
+    )
+
+    mlflow.log_metrics(
+      metrics
+    )
+
+    log_metrics_artifact(
+      metrics
+    )
+
+    mlflow.sklearn.log_model(
+      sk_model=model,
+      name="model",
+    )
+
+    print("\nResultados")
+    print("----------")
+    print(f"MAE:  {metrics['mae']:,.2f}")
+    print(f"RMSE: {metrics['rmse']:,.2f}")
+    print(f"R²:   {metrics['r2']:.4f}")
+
+    print(
+      "Predicciones negativas: "
+      f"{metrics['negative_predictions']:,}"
+    )
+
+    print(
+      "Porcentaje de predicciones negativas: "
+      f"{metrics['negative_predictions_percentage']:.2f}%"
+    )
+
+    print("\nMLflow")
+    print("------")
+    print(
+      f"Experimento: {MLFLOW_EXPERIMENT_NAME}"
+    )
+    print(
+      f"Run name: {run_name}"
+    )
+    print(
+      f"Run ID: {run.info.run_id}"
+    )
 
 if __name__ == "__main__":
   args = parse_args()
